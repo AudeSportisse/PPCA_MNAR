@@ -1,0 +1,210 @@
+---
+title: "Estimation and imputation in PPCA with MNAR data"
+author: Aude Sportisse, Claire Boyer, Julie Josse
+date: "`r format(Sys.time(), '%d %B %Y')`"
+header-includes:
+   - \usepackage{amsmath}
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+linkcolor: blue
+link-citations: yes
+bibliography: bibliography_notebook.bib
+---
+
+
+This R Notebook aims to present the code of our paper [@sportisse2019estimation].
+
+```{r loading libraries, message=FALSE, error=FALSE, warning=FALSE}
+library("FactoMineR")
+library("softImpute")
+library("MASS")
+library("gtools")
+library("ggplot2")
+library("gridExtra")
+library("pracma")
+```
+
+```{r loading files, message=FALSE, error=FALSE, warning=FALSE}
+source("PPCAMNAR_mainfunction.R")
+source("PPCAMNAR_auxiliaryfunctions.R")
+```
+
+
+Let consider a simple case where $p = 10, r = 2$ and in which seven variables can be missing, fixed to be $Y_{.j}, j \in \{1, \dots, 7\}$, under a self-masked MNAR mechanism. The noise level is fixed to $\sigma=0.1$. 
+
+The PPCA model can be written as:
+\[\begin{pmatrix} Y_{.1} & \dots & Y_{.10} \end{pmatrix}=  \mathbf{1} \begin{pmatrix} \alpha_1 & \dots & \alpha_{10} \end{pmatrix}+ \begin{pmatrix} W_{.1} & W_{.2} \end{pmatrix} B + \epsilon,\]
+with $B \in \mathbb{R}^{2\times10}$ and $\epsilon \in \mathbb{R}^{n\times 10}$.  
+
+For the simulations, the mean vector $\begin{pmatrix} \alpha_1 & \dots & \alpha_{10} \end{pmatrix}$ is set to zero. 
+
+```{r parameter setting PPCA}
+set.seed(23) #change seed
+n <- 1000 #number of observations. 
+p <- 10 #number of variables. 
+r <- 2 #number of latent variables.
+sigma <- 0.1 #noise level (standart deviation). 
+mean_theo <- 0 #vector for the theoretical mean of the data matrix. 
+indcolNA <- c(1,2,3,4,5,9,10) #indexes of the missing variables. 
+
+#coefficient matrix. 
+B <- matrix(rnorm(p * r), nrow = r, ncol = p) #random
+
+# Z = matrix(rnorm(p * r), nrow = p, ncol = r)  #uniform in the family of r orthogonal vectors in dim p
+# sqrtZ = sqrtm(t(Z)%*%Z) 
+# inv_sqrtZ = inv(sqrtZ$Binv)
+# ZZ = Z%*%inv_sqrtZ
+# B = t(ZZ)
+```
+
+MNAR missing values are introduced using a logistic regression.
+
+```{r parameter setting missingness}
+modmecha <- "Logistic" 
+```
+
+
+The method proposed in our paper involve the selection of observed variables on which the regression will be performed leading to two approaches: 
+* aggregation (agg): in which the final estimator is provided by computing the median of intermediate mean or variance estimators corresponding to several possible combinations of the observed variables.
+* random (noagg): the final estimator is built upon only one choice of fully observed variables, uniformly randomly drawn among all combinations of observed variables.
+
+
+```{r approaches choice}
+agg <- 1 #aggregation with median
+noagg <- 0 #at random
+```
+
+The main function is **ComparMethods_PPCA_iteration**, which gives the estimations for the mean, the variance and the covariances associated to each MNAR missing variable of the data matrix generated under the PPCA model using the coefficient matrix and the noise level. The main arguments are: 
+
+* seed.num: to fix the random number generator for each . 
+
+* n: number of observations. 
+
+* p: number of variables. 
+
+* r: number of latent variables.
+
+* B: coefficient matrix. 
+
+* mean_theo: vector for the theoretical mean of the data matrix. 
+
+* sigma: noise level (standart deviation). 
+
+* indcolNA: indexes of the missing variables. 
+
+* nbNA: number of missing values (if modmecha=="Censor").
+
+* modmecha: model for the MNAR mechanism: "Logistic" or "Censor". 
+
+* agg: 1 (default) to return the results for the graphical and algebraic MNAR methods by choosing the aggregation of the combinations of observable variables for the regressions, 0 otherwise.
+
+* noagg: 1 to return the results for the graphical and algebraic MNAR methods by randomly choosing a combination of observable variables for the regressions, 0 (default) otherwise.
+
+* simplify: FALSE if all the the combinations of observable variables shoud be considered for the graphical and algebraic MNAR methods, TRUE (default) if only a part of them is considered. 
+
+* r_reg: if simplify=TRUE, numnber of observable variables to use.
+
+
+
+```{r results}
+Nbit = 20
+result = lapply(1:Nbit,ComparMethods_PPCA_iteration,n=n,
+                  p=p,
+                  r=r,
+                  B=B,
+                  mean_theo=mean_theo,
+                  sigma=sigma,
+                  indcolNA=indcolNA,
+                  modmecha=modmecha,
+                  agg = agg,
+                  noagg = noagg,
+                  simplify = FALSE)
+```
+
+
+# Means and variances estimation
+
+```{r mean and variance graphics setting}
+CovTheo <- t(B) %*% B + sigma ^ 2 * diag(1, ncol = p, nrow = p) #covariance matrix (theoretical) computation
+j=1 #index of the missing variable for which we will obtain the graphics.
+```
+
+
+```{r mean and variance graphics, echo = FALSE}
+Meanglob <- c()
+Varglob <- c()
+for (k in 1:Nbit){
+  Meanglob <- c(Meanglob,result[[k]][[1]][seq(j,length(result[[k]][[1]]),by=length(indcolNA))])
+  Varglob <- c(Varglob,result[[k]][[2]][seq(j,length(result[[k]][[2]]),by=length(indcolNA))])
+}
+data_plot_Mean <- data.frame(result=Meanglob,meth=rep(c("1.MNAR algebraic","6.CC","2.MAR","4.Soft","5.Mean","3.MAREM"),Nbit))
+data_plot_Var <- data.frame(result=Varglob,meth=rep(c("1.MNAR graphical","2.MNAR algebraic","7.CC","3.MAR","5.Soft","6.Mean","4.MAREM"),Nbit))
+plot1=ggplot(data=data_plot_Mean,aes(x=data_plot_Mean$meth,y=data_plot_Mean$result))+geom_boxplot()+geom_hline(yintercept = mean_theo,color = "red")+ylab(paste("Mean",indcolNA[j]))+xlab("")+scale_x_discrete(labels=c("MNAR","MAR","EMMAR","SoftMAR","Mean","Del")) +theme(axis.title.x=element_text(size=22),axis.title.y=element_text(size=22),axis.text.x=element_text(size=22,angle=45),axis.text.y=element_text(size=22),title=element_text(size=22)) + theme(legend.position='none')
+plot2=ggplot(data=data_plot_Var,aes(x=data_plot_Var$meth,y=data_plot_Var$result))+geom_boxplot()+geom_hline(yintercept = CovTheo[indcolNA[j],indcolNA[j]],color = "red")+ylab(paste("Variance",indcolNA[j]))+xlab("")+scale_x_discrete(labels=c("MNAR graph","MNAR alg","MAR","EMMAR","SoftMAR","Mean","Del")) +theme(axis.title.x=element_text(size=22),axis.title.y=element_text(size=22),axis.text.x=element_text(size=22,angle=45),axis.text.y=element_text(size=22),title=element_text(size=22)) + theme(legend.position='none')+ylim(c(median(Varglob)-2,median(Varglob)+2))
+grid.arrange(plot1,plot2,ncol=2)
+```
+
+
+
+# Covariances estimation
+
+```{r covariance graphics setting}
+j=1 #index of the missing variable for which we will obtain the graphics.
+l1=2 #index of the variable (observable or missing) for which we will obtain the graphics.
+l2=3 #index of the ariable (observable or missing) for which we will obtain the graphics.
+```
+
+
+```{r covariance graphics, echo = FALSE}
+data_plot_Cov=NULL
+for (l in c(l1,l2)){
+  matrixres <- matrix(0,nrow=7,ncol=Nbit)
+  k=1
+  for (ibis in 1:Nbit){
+    matrixres[1,k]<-result[[k]][[3]][[1]][j,l]
+    matrixres[2,k]<-result[[k]][[3]][[2]][j,l]
+    matrixres[3,k]<-result[[k]][[3]][[3]][j,l]
+    matrixres[4,k]<-result[[k]][[3]][[4]][j,l]
+    matrixres[5,k]<-result[[k]][[3]][[5]][j,l]
+    matrixres[6,k]<-result[[k]][[3]][[6]][j,l]
+    matrixres[7,k]<-result[[k]][[3]][[7]][j,l]
+    k <- k+1
+  }
+  data_plot_Cov[[l]]=data.frame(result33=c(matrixres[1,],matrixres[2,],matrixres[3,],matrixres[4,],matrixres[5,],matrixres[6,],matrixres[7,]),meth=c(rep("1.MNAR graphical",Nbit),rep("2.MNAR algebraic",Nbit),rep("7.CC",Nbit),rep("3.MAR",Nbit),rep("5.Soft",Nbit),rep("6.Mean",Nbit),rep("4.MAREM",Nbit)))
+}
+
+plot1=ggplot(data=data_plot_Cov[[l1]],aes(x=data_plot_Cov[[l1]]$meth,y=data_plot_Cov[[l1]]$result33)) + geom_boxplot()  + ylab(paste("Covariance",j,l1))+xlab("")+scale_x_discrete(labels=c("MNAR graph","MNAR alg","MAR","EMMAR","SoftMAR","Mean","Del")) + geom_hline(yintercept = CovTheo[j,l1],color = "red") +theme(axis.title.x=element_text(size=22),axis.title.y=element_text(size=22),axis.text.x=element_text(size=22,angle=45),axis.text.y=element_text(size=22),title=element_text(size=22)) + theme(legend.position='none') +ylim(c(median(data_plot_Cov[[l1]]$result33)-2,median(data_plot_Cov[[l1]]$result33)+2))
+
+plot2=ggplot(data=data_plot_Cov[[l2]],aes(x=data_plot_Cov[[l2]]$meth,y=data_plot_Cov[[l2]]$result33)) + geom_boxplot()  + ylab(paste("Covariance",j,31))+xlab("")+scale_x_discrete(labels=c("MNAR graph","MNAR alg","MAR","EMMAR","SoftMAR","Mean","Del")) + geom_hline(yintercept = CovTheo[j,l2],color = "red") +theme(axis.title.x=element_text(size=22),axis.title.y=element_text(size=22),axis.text.x=element_text(size=22,angle=45),axis.text.y=element_text(size=22),title=element_text(size=22)) + theme(legend.position='none')+ylim(c(median(data_plot_Cov[[l2]]$result33)-2,median(data_plot_Cov[[l2]]$result33)+2))
+
+grid.arrange(plot1,plot2,ncol=2)
+```
+
+
+# Estimation of the loading matrix and prediction error
+
+```{r correlation and MSE graphics, echo=FALSE}
+Correlationglob <- c()
+MSEglob <- c()
+for (k in 1:Nbit){
+  Correlationglob <- c(Correlationglob,result[[k]][[4]])
+  MSEglob <- c(MSEglob,result[[k]][[5]])
+}
+data_plot_Correlation <- data.frame(result3=Correlationglob,meth=rep(c("1.MNAR graphical","2.MNAR algebraic","3.MAR","5.Soft","6.Mean","4.MAREM"),Nbit))
+data_plot_MSE <- data.frame(result3=MSEglob,meth=c(rep(c("1.MNAR graphical","2.MNAR algebraic","3.MAR","5.Soft","6.Mean","4.MAREM"),Nbit)))
+
+plot1=ggplot(data=data_plot_Correlation,aes(x=data_plot_Correlation$meth,y=data_plot_Correlation$result3))+geom_boxplot()+ylab("Correlation")+xlab("")+scale_x_discrete(labels=c("MNAR graph","MNAR alg","MAR","EMMAR","SoftMAR","Mean"))+theme(axis.title.x=element_text(size=22),axis.title.y=element_text(size=22),axis.text.x=element_text(size=22,angle=45),axis.text.y=element_text(size=22),title=element_text(size=22)) + theme(legend.position='none')
+
+plot2=ggplot(data=data_plot_MSE,aes(x=data_plot_MSE$meth,y=data_plot_MSE$result3))+geom_boxplot()+ylab("Prediction error")+xlab("")+scale_x_discrete(labels=c("MNAR graph","MNAR alg","MAR","EMMAR","SoftMAR","Mean"))+theme(axis.title.x=element_text(size=22),axis.title.y=element_text(size=22),axis.text.x=element_text(size=22,angle=45),axis.text.y=element_text(size=22),title=element_text(size=22)) + theme(legend.position='none')+ylim(c(0,2))
+
+grid.arrange(plot1,plot2,ncol=2)
+```
+
+

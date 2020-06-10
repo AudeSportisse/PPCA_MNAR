@@ -21,7 +21,7 @@ source("OtherFunctions.R")
 # n: number of observations. 
 # p: number of variables. 
 # r: number of latent variables. (If r is not well specified, please provide information to r_theo.)
-# B: (theoretical) loading matrix of size r*p.
+# B: (theoretical) loading matrix of size r_theo*p.
 # mean_theo: vector of size p for the theoretical mean of the data matrix. 
 # sigma: noise level (standart deviation). 
 # indMissVar: indexes of the missing variables. 
@@ -60,7 +60,6 @@ ComparMethods_PPCA_iteration <-
     
     ##Introduction of missing values
     YNA <- Y
-    missingreg <- c()
     a <- param_logistic[1]
     b <- param_logistic[2]
     for (j in indMissVar) {
@@ -90,11 +89,9 @@ ComparMethods_PPCA_iteration <-
       # Two_othervariables <- sample(setdiff(indMissVar,j),2,replace=FALSE)
       # prob <- apply(Y[, c(j,Two_othervariables)],1, select_prob)
       
-      compt = 0
       missing = c()
       for (k in 1:n) {
         u <- runif(1)
-        compt = compt + (prob[k] > u)
         if (prob[k] > u) {
           missing = c(missing, k)
         }

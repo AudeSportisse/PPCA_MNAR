@@ -1,0 +1,224 @@
+---
+title: "Estimation and imputation in PPCA with MNAR data - synthetic data"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+header-includes:
+   - \usepackage{amsmath}
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+
+
+```{r loading libraries, message=FALSE, error=FALSE, warning=FALSE}
+library(ggplot2)
+library(gridExtra)
+```
+
+```{r loading files, message=FALSE, error=FALSE, warning=FALSE}
+source("Function_simulations.R")
+```
+
+
+Let us consider a simple case where $p = 20, r = 3$ and in which seven variables can be missing, fixed to be $Y_{.j}, j \in \{1, \dots, 10\}$, under a self-masked MNAR mechanism. The noise level is fixed to $\sigma=0.8$. 
+
+The PPCA model can be written as:
+\[\begin{pmatrix} Y_{.1} & \dots & Y_{.20} \end{pmatrix}=  \mathbf{1} \alpha+ W B + \epsilon,\]
+with $\alpha \in \mathbb{R}^{20}$, $W \in \mathbb{R}^{n \times 3}$, $B \in \mathbb{R}^{3\times20}$, $\epsilon \in \mathbb{R}^{n\times 20}$ and 
+$$\forall i \in \{1,\dots,n\}, \: W_{i.} \sim \mathcal{N}(0_3,\mathrm{Id}_{3\times 3}),$$
+$$\forall i \in \{1,\dots,n\}, \: \epsilon_{i.} \sim \mathcal{N}(0_{20},\sigma^2\mathrm{Id}_{20\times 20})$$
+which leads to 
+
+$$\forall i \in \{1,\dots,n\}, \: Y_{i.} \sim \mathcal{N}(\alpha,B^TB+\sigma^2\mathrm{Id}_{20\times 20}).$$
+
+
+For the simulations, the mean vector $\alpha$ is set to zero. 
+
+```{r parameter setting PPCA}
+set.seed(23) #change seed
+n <- 1000 #number of observations. 
+p <- 20 #number of variables. 
+r <- 3 #number of latent variables.
+sigma <- 0.8 #noise level (standart deviation). 
+mean_theo <- 0 #vector for the theoretical mean of the data matrix. 
+indMissVar <- 1:10 #indexes of the missing variables. 
+
+#loading matrix. 
+B <- matrix(rnorm(p * r), nrow = r, ncol = p) #random
+
+```
+
+
+The main function is **ComparMethods_PPCA_iteration**, which gives, for different methods, the estimations for the mean, the variance and the covariances associated to each MNAR missing variable of the data matrix generated under the PPCA model using the coefficient matrix and the noise level. The main arguments are: 
+
+* seed.num: to fix the random number generator for each . 
+
+* n: number of observations. 
+
+* p: number of variables. 
+
+* r: number of latent variables. (If r is not well specified, please provide information to r_theo.)
+
+* B: loading matrix. 
+
+* mean_theo: vector for the theoretical mean of the data matrix. 
+
+* sigma: noise level (standart deviation). 
+
+* indMissVar: indexes of the missing variables. 
+
+* r_theo: rank (number of latent variables) with which B is generated. If NULL, r_theo=r. 
+
+* param_logistic: parameters of the logistic regression, vector of 2 elements. (By default, it leads to about 35% missing values in total for n=1000, p=10, r=2 and 7 missing variables.)
+
+If the misspecification to the rank is studied, use the arguments r and r_teo given above. 
+
+The argument param_logistic, which contains the paramaters of the logistic distribution but also determines the percentage of missing values, may be difficult to choose. You can use the function **percNA** below which alows to estimate the percentage of missing values for particular choices of dimension, loading matrix, mean of the data matrix, noise level, indexes of missing variables and missing-data parameters. 
+
+
+```{r choice of param_logistic percentage of NA}
+
+######
+## Name: percNA
+## Description: #it returns the mean of the percentage of introduced missing values for several repetitions. 
+## Arguments: 
+# Nbit: number of repetitions. 
+# n: number of observations. 
+# p: number of variables. 
+# B: (theoretical) loading matrix of size r_theo*p.
+# mean_theo: vector of size p for the theoretical mean of the data matrix. 
+# sigma: noise level (standart deviation). 
+# indMissVar: indexes of the missing variables. 
+# param_logistic: parameters of the logistic regression, vector of 2 elements.
+###### 
+
+percNA <- function(Nbit,n,p,B,mean_theo,sigma,indMissVar,param_logistic){
+    simu_PPCA_NA <- function(seed_num,n,p,B,mean_theo,sigma,indMissVar,param_logistic){
+      set.seed(seed_num)
+      r_theo = nrow(B)
+      W <- matrix(rnorm(n * r_theo), nrow = n, ncol = r_theo)
+      Noise <- matrix(rnorm(p * n, sd = sigma), nrow = n, ncol = p)
+      Y <- rep(mean_theo, n) + W %*% B  + Noise
+      
+      #Covariance matrix (theoretical)
+      CovTheo <- t(B) %*% B + sigma ^ 2 * diag(1, ncol = p, nrow = p)
+      
+      ##Introduction of missing values
+      YNA <- Y
+      missingreg <- c()
+      a <- param_logistic[1]
+      b <- param_logistic[2]
+      for (j in indMissVar) {
+        #Logistic regression
+        select_prob <-
+          function(x, modmecha) {
+            #probability of selecting coordinate Xij
+            res = 1 / (1 + exp(-a * (x - b)))
+            return(res)
+          }
+        prob <- sapply(Y[, j], select_prob, modmecha)
+        missing = c()
+        for (k in 1:n) {
+          u <- runif(1)
+          if (prob[k] > u) {
+            missing = c(missing, k)
+          }
+        }
+        YNA[missing, j] <- NA
+      }
+      return(sum(is.na(YNA)))
+    }
+    return(mean(sapply(1:Nbit,simu_PPCA_NA,n,p,B,mean_theo,sigma,indMissVar,param_logistic)/(n*p)))
+}
+```
+
+With our setting, the percentage of missing values is approx. 25\%. 
+
+```{r}
+percNA(20,n,p,B,mean_theo,sigma,indMissVar,c(3,0))
+```
+
+
+The function **ComparMethods_PPCA_iteration** gives the estimations for different methods for one repetition. You should use **lapply** to obtain several repetitions as in the code below. 
+
+
+```{r results}
+Nbit = 20
+result = lapply(1:Nbit,ComparMethods_PPCA_iteration,
+                      n=n,
+                      p=p,
+                      r=r,
+                      B=B,
+                      mean_theo=mean_theo,
+                      sigma=sigma,
+                      indMissVar=indMissVar
+)
+```
+
+
+# Means and variances estimation
+
+The boxplots for the estimations of the mean/variance/covariances and for the RV coefficient score and the prediction error can be obtained as follows. In the pdf version, for more readibility, the code for the figures is hidden but you can access it in the Rmd file. 
+
+If there are some outliers in the results for **EMMAR**, please use *ylim()*. 
+
+```{r mean and variance graphics settings}
+CovTheo <- t(B) %*% B + sigma ^ 2 * diag(1, ncol = p, nrow = p) #covariance matrix (theoretical) computation
+j <- 1 #the missing variable for which the mean, variance and covariances is ploted.
+jmiss <- 2 #the missing variable for which the covariance is ploted.
+jobs <- 8 #the observed variable for which the covariance is ploted.
+```
+
+```{r, echo=FALSE}
+Meanglob <- c()
+Varglob <- c()
+Covglob1 <- c()
+Covglob2 <- c()
+for (k in 1:Nbit){
+  Meanglob <- c(Meanglob,result[[k]]$Mean$MNAR[j],result[[k]]$Mean$CC[j],result[[k]]$Mean$MAR[j],result[[k]]$Mean$Soft[j],result[[k]]$Mean$Mean[j],result[[k]]$Mean$MAREM[j])
+  Varglob <- c(Varglob,result[[k]]$Cov$MNAR[j,j],result[[k]]$Cov$CC[j,j],result[[k]]$Cov$MAR[j,j],result[[k]]$Cov$Soft[j,j],result[[k]]$Cov$Mean[j,j],result[[k]]$Cov$MAREM[j,j])
+  Covglob1 <- c(Covglob1,result[[k]]$Cov$MNAR[j,jmiss],result[[k]]$Cov$CC[j,jmiss],result[[k]]$Cov$MAR[j,jmiss],result[[k]]$Cov$Soft[j,jmiss],result[[k]]$Cov$Mean[j,jmiss],result[[k]]$Cov$MAREM[j,jmiss])
+  Covglob2 <- c(Covglob2,result[[k]]$Cov$MNAR[j,jobs],result[[k]]$Cov$CC[j,jobs],result[[k]]$Cov$MAR[j,jobs],result[[k]]$Cov$Soft[j,jobs],result[[k]]$Cov$Mean[j,jobs],result[[k]]$Cov$MAREM[j,jobs])
+}
+data_plot_Mean <- data.frame(result=Meanglob,meth=rep(c("2.MNAR","8.CC","4.MAR","6.Soft","7.Mean","5.MAREM"),Nbit))
+data_plot_Var <- data.frame(result=Varglob,meth=rep(c("2.MNAR","8.CC","4.MAR","6.Soft","7.Mean","5.MAREM"),Nbit))
+data_plot_Cov1 <- data.frame(result=Covglob1,meth=rep(c("2.MNAR","8.CC","4.MAR","6.Soft","7.Mean","5.MAREM"),Nbit))
+data_plot_Cov2 <- data.frame(result=Covglob2,meth=rep(c("2.MNAR","8.CC","4.MAR","6.Soft","7.Mean","5.MAREM"),Nbit))
+
+#use ylim(c(...,...)) if outliers. 
+plot1 <- ggplot(data=data_plot_Mean,aes(x=meth,y=result))+geom_boxplot()+geom_hline(yintercept = mean_theo,color = "red")+ylab("")+xlab("Mean of a MNAR variable")+scale_x_discrete(labels=c("MNAR","MAR","EMMAR","SoftMAR","Mean","Del")) +theme(axis.title.x=element_text(size=12),axis.title.y=element_text(size=12),axis.text.x=element_text(size=12,angle=60),axis.text.y=element_text(size=12),title=element_text(hjust = 0.5,size=12)) + theme(legend.position='none')
+plot2 <- ggplot(data=data_plot_Var,aes(x=meth,y=result))+geom_boxplot()+geom_hline(yintercept = CovTheo[j,j],color = "red")+ylab("")+xlab("Variance of a MNAR variable")+scale_x_discrete(labels=c("MNAR","MAR","EMMAR","SoftMAR","Mean","Del")) +theme(axis.title.x=element_text(size=12),axis.title.y=element_text(size=12),axis.text.x=element_text(size=12,angle=60),axis.text.y=element_text(size=12),title=element_text(hjust = 0.5,size=12)) + theme(legend.position='none')
+plot3 <- ggplot(data=data_plot_Cov1,aes(x=meth,y=result))+geom_boxplot()+geom_hline(yintercept = CovTheo[j,jmiss],color = "red")+ylab("")+xlab("Cov 2 MNAR variables")+scale_x_discrete(labels=c("MNAR","MAR","EMMAR","SoftMAR","Mean","Del"))+ylim(c(-1,2)) +theme(axis.title.x=element_text(size=12),axis.title.y=element_text(size=12),axis.text.x=element_text(size=12,angle=60),axis.text.y=element_text(size=12),title=element_text(hjust = 0.5,size=12)) + theme(legend.position='none')
+plot4 <- ggplot(data=data_plot_Cov2,aes(x=meth,y=result))+geom_boxplot()+geom_hline(yintercept = CovTheo[j,jobs],color = "red")+ylab("")+xlab("Cov MNAR/pivot variables")+scale_x_discrete(labels=c("MNAR","MAR","EMMAR","SoftMAR","Mean","Del")) +theme(axis.title.x=element_text(size=12),axis.title.y=element_text(size=12),axis.text.x=element_text(size=12,angle=60),axis.text.y=element_text(size=12),title=element_text(hjust = 0.5,size=12)) + theme(legend.position='none')
+
+grid.arrange(plot1,plot2,ncol=2) 
+grid.arrange(plot3,plot4,ncol=2) 
+```
+
+
+# Estimation of the loading matrix and prediction error
+
+
+```{r, echo=FALSE}
+#Correlation and MSE
+Correlationglob <- c()
+MSEglob <- c()
+for (k in 1:Nbit){
+  Correlationglob <- c(Correlationglob,result[[k]]$Correlation$MNAR,result[[k]]$Correlation$MAR,result[[k]]$Correlation$Soft,result[[k]]$Correlation$Mean,result[[k]]$Correlation$MAREM)
+  MSEglob <- c(MSEglob,result[[k]]$MSE$MNAR,result[[k]]$MSE$MAR,result[[k]]$MSE$Soft,result[[k]]$MSE$Mean,result[[k]]$MSE$MAREM)
+}
+data_plot_Correlation <- data.frame(result=Correlationglob,meth=rep(c("2.MNAR","4.MAR","6.Soft","7.Mean","5.MAREM"),Nbit))
+data_plot_MSE <- data.frame(result=MSEglob,meth=rep(c("2.MNAR","4.MAR","6.Soft","7.Mean","5.MAREM"),Nbit))
+
+#use ylim(c(...,...)) if outliers. 
+plot5 <- ggplot(data=data_plot_Correlation,aes(x=meth,y=result))+geom_boxplot()+ylab("")+xlab("RV Coefficient")+scale_x_discrete(labels=c("MNAR","MAR","EMMAR","SoftMAR","Mean"))+theme(axis.title.x=element_text(size=12),axis.title.y=element_text(size=12),axis.text.x=element_text(size=12,angle=60),axis.text.y=element_text(size=12),title=element_text(size=12)) + theme(legend.position='none')
+plot6 <- ggplot(data=data_plot_MSE,aes(x=meth,y=result))+geom_boxplot()+ylab("")+xlab("Prediction error")+scale_x_discrete(labels=c("MNAR","MAR","EMMAR","SoftMAR","Mean"))+theme(axis.title.x=element_text(size=12),axis.title.y=element_text(size=12),axis.text.x=element_text(size=12,angle=60),axis.text.y=element_text(size=12),title=element_text(size=12)) + theme(legend.position='none') + ylim(c(0,2))
+grid.arrange(plot5,plot6,ncol=2)
+```
+

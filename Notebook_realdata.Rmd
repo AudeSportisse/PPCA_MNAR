@@ -1,0 +1,144 @@
+---
+title: "Estimation and imputation in PPCA with MNAR data - real data"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+header-includes:
+   - \usepackage{amsmath}
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r Load packages, message=FALSE, error=FALSE, warning=FALSE}
+library(ggplot2)
+library(tidyr)
+library(data.table)
+library(dplyr)
+library(FactoMineR)
+library(logistf)
+library(ROCR)
+library(denoiseR)
+library(missMDA)
+library(softImpute)
+```
+
+
+```{r Load dataset which contains missing values}
+YNA <- read.csv("dataset_toy.csv")
+```
+
+
+If scale=TRUE, the variables are scaled to give the same weight to each variable before applying the algorithm (and also before estimating the rank and noise level).
+Otherwise, scale=FALSE
+
+```{r Scaling the variables (or not scaling)}
+scale <- FALSE
+```
+
+The estimations of the rank and noise level are performed using the complete-case analysis (complete rows only). 
+
+```{r Estimation of the rank and noise level, message=FALSE, error=FALSE, warning=FALSE, results='hide'}
+obs <- c() #indexes of the complete rows
+for (i in 1:nrow(YNA)){
+  if(sum(is.na(YNA[i,]))==0){
+    obs <- c(obs,i)
+  }
+}
+
+if(scale==TRUE){
+  meanX <- apply(YNA, 2,mean,na.rm=TRUE)
+  YNA <- t(t(YNA) - meanX)
+  etX <- apply(YNA, 2,sd,na.rm=TRUE)
+  YNA <- t(t(YNA)/etX)
+}
+ncp=estim_ncpPCA(YNA[obs,],method.cv="Kfold")$ncp
+sigma = estim_sigma(YNA[obs,],k=ncp)
+if(scale==TRUE){
+  YNA <- t(t(YNA) * etX )
+  YNA <- t(t(YNA) + meanX )
+}
+```
+
+
+```{r, message=FALSE, error=FALSE, warning=FALSE}
+source("Function_realdata.R")
+```
+
+
+To assess the quality of our method, we can introduce additional MNAR values in one missing variables and considering the other variables as MCAR. Our method is compared to the algorithm called softImpute and the EM algorithm handling MAR data for PPCA models. The prediction error is relative to the error of the benchmark imputation by the mean.
+
+Our method requires a complete data matrix of size $(n,p)$ imputed in advance which serves to estimate the mean and covariances using the empirical quantities. We can use *imputePCA*. 
+
+
+```{r  parameter setting}
+r <- ncp #rank is the one estimated above. 
+
+indMissVar <- c(1) #choose the missing variable for which some MNAR values are added. 
+indRegVar <- 10:20 #choose the indexes of the pivot variables. 
+
+YNAimp <- imputePCA(YNA,ncp=ncp) #complete data matrix of size $(n,p)$ imputed in advance which serves to estimate the mean and covariances using the empirical quantities
+YNAimp <- YNAimp$completeObs
+
+Nbit <- 20 #number of iterations for introducing additional MNAR values.
+
+param_logistic <- c(3,0) #Parameter of the missing-data mechanism 
+ 
+```
+
+The main function is **ComparMethods_PPCA_realdata**, which gives the prediction error (for the additionnal MNAR values) relative to the mean imputation (i.e. the prediction error for the mean imputation is fixed to one). The main arguments are: 
+
+* seed.num: to fix the random number generator. 
+
+* YNA: incomplete data matrix of size n*p.
+
+* YNAimp: complete data matrix of size n*p imputed in advance which serves to estimate the mean and covariances using the empirical quantities (in our method). 
+
+* r: number of latent variables. 
+
+* sigma: noise level (standart deviation). 
+
+* indMissVar: indexes of the missing variables. 
+
+* indRegVar: indexes of the pivot variables. If NULL, they are chosen as the complementary of the indexes of the missing variables. 
+
+* param_logistic: parameters of the logistic regression, vector of 2 elements. (By default, it leads to about 35% missing values in total for n=1000, p=10, r=2 and 7 missing variables.)
+
+* scale: if scale=TRUE, the variables are scaled to give the same weight to each variable before applying the algorithm. By default, scale=FALSE.
+
+
+
+```{r results}
+result <- lapply(1:Nbit,ComparMethods_PPCA_realdata,
+                      YNA=YNA,
+                      YNAimp=YNAimp,
+                      sigma=sigma,
+                      r=r,
+                      indMissVar=indMissVar,
+                      indRegVar=indRegVar,
+                      param_logistic=param_logistic
+)
+
+```
+
+
+```{r, echo=FALSE}
+#MSE
+MSEglob <- c()
+for (k in 1:Nbit){
+  MSEglob <- c(MSEglob,result[[k]]$MSE$MNAR,result[[k]]$MSE$Soft,result[[k]]$MSE$MAREM)
+}
+data_plot_MSE <- data.frame(result=MSEglob,meth=rep(c("2.MNAR","6.Soft","5.MAREM"),Nbit))
+
+#use ylim(c(...,...)) if outliers. 
+plotMSE <- ggplot(data=data_plot_MSE,aes(x=meth,y=result))+geom_boxplot()+ylab("")+xlab("Prediction error")+scale_x_discrete(labels=c("MNAR","EMMAR","SoftMAR"))+theme(axis.title.x=element_text(size=12),axis.title.y=element_text(size=12),axis.text.x=element_text(size=12,angle=60),axis.text.y=element_text(size=12),title=element_text(size=12)) + theme(legend.position='none')+geom_hline(yintercept =1,color = "red")
+plotMSE
+```
+
+
+
+

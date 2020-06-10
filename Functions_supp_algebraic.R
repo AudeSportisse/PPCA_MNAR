@@ -180,7 +180,7 @@ Covariance_2missing_algebraic <- function(jmiss,jmiss2,r,indMissVar,combinations
       if (r>2){
         variables_reg_minusy <- c(jmiss,jmiss2,combi[2:(r-1)])
         variables_reg <- combi[2:(r-1)]
-        coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ YNAcc_allvar[,variables_reg_minusy]))
+        coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ as.matrix(YNAcc_allvar[,variables_reg_minusy])))
         variances_vec <- diag(cov_results[variables_reg_minusy,variables_reg_minusy])
         term <- 0
         for (k in 1:length(variables_reg_minusy)){
@@ -193,7 +193,7 @@ Covariance_2missing_algebraic <- function(jmiss,jmiss2,r,indMissVar,combinations
       }else{
         variables_reg_minusy <- c(jmiss,jmiss2)  
         variables_reg <- c()
-        coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ YNAcc_allvar[,variables_reg_minusy]))
+        coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ as.matrix(YNAcc_allvar[,variables_reg_minusy])))
         variances_vec <- diag(cov_results[variables_reg_minusy,variables_reg_minusy])
         term <- 0
       }
@@ -218,7 +218,7 @@ Covariance_2missing_algebraic <- function(jmiss,jmiss2,r,indMissVar,combinations
     if (r>2){
       variables_reg_minusy <- c(jmiss,jmiss2,combi[2:(r-1)])
       variables_reg <- combi[2:(r-1)]
-      coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ YNAcc_allvar[,variables_reg_minusy]))
+      coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ as.matrix(YNAcc_allvar[,variables_reg_minusy])))
       variances_vec <- diag(cov_results[variables_reg_minusy,variables_reg_minusy])
       term <- 0
       for (k in 1:length(variables_reg_minusy)){
@@ -231,7 +231,7 @@ Covariance_2missing_algebraic <- function(jmiss,jmiss2,r,indMissVar,combinations
     }else{
       variables_reg_minusy <- c(jmiss,jmiss2)  
       variables_reg <- c()
-      coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ YNAcc_allvar[,variables_reg_minusy]))
+      coeff_reg <- coefficients(lm(YNAcc_allvar[,combi[1]] ~ as.matrix(YNAcc_allvar[,variables_reg_minusy])))
       variances_vec <- diag(cov_results[variables_reg_minusy,variables_reg_minusy])
       term <- 0
     }

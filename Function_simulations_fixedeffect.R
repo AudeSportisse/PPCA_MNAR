@@ -59,11 +59,9 @@ ComparMethods_PPCA_iteration_fixedeffect <-
           return(res)
         }
       prob <- sapply(Y[, j], select_prob, modmecha)
-      compt = 0
       missing = c()
       for (k in 1:n) {
         u <- runif(1)
-        compt = compt + (prob[k] > u)
         if (prob[k] > u) {
           missing = c(missing, k)
         }

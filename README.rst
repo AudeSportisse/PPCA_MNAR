@@ -12,7 +12,7 @@ There are the following Notebooks:
 
 The code to reproduce the simulations of the paper is available in: 
 
-* **Simulations_Toy.R** for Figure 2 (simple setting $r=2$, )
+* **Simulations_Toy.R** for Figure 2 (simple setting $$r=2$$, )
 
 * **Simulations_noise.R** for Figures 5, 6 and 7 (testing the robustness to the noise)
 

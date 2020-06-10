@@ -12,7 +12,7 @@ There are the following Notebooks:
 
 The code to reproduce the simulations of the paper is available in: 
 
-* **Simulations_Toy.R** for Figure 2 (simple setting $$r=2$$, )
+* **Simulations_Toy.R** for Figure 2 (simple setting n=1000, p=10, r=2, 7 self-masked MNAR missing variable). 
 
 * **Simulations_noise.R** for Figures 5, 6 and 7 (testing the robustness to the noise)
 
